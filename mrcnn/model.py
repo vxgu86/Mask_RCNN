@@ -376,22 +376,29 @@ class PyramidROIAlign(KE.Layer):
         # Feature Maps. List of feature maps from different level of the
         # feature pyramid. Each is [batch, height, width, channels]
         feature_maps = inputs[2:]
-
+        ###############################################################
+        ##确定某个 ROI 使用哪一层特征图进行 ROIpooling
         # Assign each ROI to a level in the pyramid based on the ROI area.
+        # 这里的 boxes 是 ROI 的框，用来计算得到每个 ROI 框的面积
         y1, x1, y2, x2 = tf.split(boxes, 4, axis=2)
         h = y2 - y1
         w = x2 - x1
         # Use shape of first image. Images in a batch must have the same size.
+        # 这里得到原图的尺寸，计算原图的面积
         image_shape = parse_image_meta_graph(image_meta)['image_shape'][0]
         # Equation 1 in the Feature Pyramid Networks paper. Account for
         # the fact that our coordinates are normalized here.
         # e.g. a 224x224 ROI (in pixels) maps to P4
+        ## 原图面积
         image_area = tf.cast(image_shape[0] * image_shape[1], tf.float32)
+        # 分两步计算每个 RoI 框需要在哪个层的特征图中进行 pooling
         roi_level = log2_graph(tf.sqrt(h * w) / (224.0 / tf.sqrt(image_area)))
         roi_level = tf.minimum(5, tf.maximum(
             2, 4 + tf.cast(tf.round(roi_level), tf.int32)))
         roi_level = tf.squeeze(roi_level, 2)
 
+        ##########5个融合了不同层级的特征图怎么使用
+        ##对每个 box，都提取其中每一层特征图上该box对应的特征，然后组成一个大的特征列表pooled
         # Loop through levels and apply ROI pooling to each. P2 to P5.
         pooled = []
         box_to_level = []
@@ -920,7 +927,7 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
         bbox_deltas: [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))] Deltas to apply to
                      proposal boxes
     """
-    # ROI Pooling
+    # ROI Pooling   所有层级共享分类层
     # Shape: [batch, num_rois, POOL_SIZE, POOL_SIZE, channels]
     # 得到经过 ROI pooling 之后的特征列表
     x = PyramidROIAlign([pool_size, pool_size],
